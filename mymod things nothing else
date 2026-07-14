@@ -1,0 +1,717 @@
+LivingWorldManager.java:
+package com.example.core;
+
+import net.minecraft.server.MinecraftServer;
+
+public class LivingWorldManager {
+
+    private static MinecraftServer server;
+    private static LivingWorldSave data;
+
+    public static void initialize(MinecraftServer minecraftServer) {
+
+        if (server != null) {
+            return;
+        }
+
+        server = minecraftServer;
+
+        data = new LivingWorldSave();
+
+        data.settlements.add(
+                new Settlement(
+                        "First Village",
+                        0,
+                        0
+                )
+        );
+
+        System.out.println(
+                "[LivingWorld] Civilization system started!"
+        );
+    }
+
+    public static void tick() {
+
+        if (data == null) {
+            return;
+        }
+
+        data.tick();
+
+        if (data.worldAge % 24000 != 0) {
+            return;
+        }
+
+        System.out.println(
+                "[LivingWorld] ===== NEW DAY ====="
+        );
+
+        data.dailyUpdate();
+
+        System.out.println(
+                "[LivingWorld] Settlements: "
+                        + data.settlements.size()
+        );
+
+        for (Settlement settlement : data.settlements) {
+
+            System.out.println("-----------------------");
+
+            System.out.println(
+                    settlement.getName()
+            );
+
+            System.out.println(
+                    "Population: "
+                            + settlement.getPopulation()
+            );
+
+            System.out.println(
+                    "Level: "
+                            + settlement.getLevel()
+            );
+
+            System.out.println(
+                    "Houses: "
+                            + settlement.getHouses()
+            );
+
+            System.out.println(
+                    "Food: "
+                            + settlement.getFood()
+            );
+
+            System.out.println(
+                    "Wood: "
+                            + settlement.getWood()
+            );
+
+            System.out.println(
+                    "Stone: "
+                            + settlement.getStone()
+            );
+        }
+
+        WorldEventManager.dailyTick();
+    }
+
+    public static LivingWorldSave getData() {
+        return data;
+    }
+}
+LivingWorldSave.java:
+package com.example.core;
+
+
+import java.util.ArrayList;
+import java.util.List;
+
+
+
+public class LivingWorldSave {
+
+
+
+    public long worldAge = 0;
+
+
+
+    public int population = 10;
+
+
+
+    public int civilizationLevel = 0;
+
+
+
+    public int forestLevel = 100;
+
+
+
+    public int animalPopulation = 50;
+
+
+
+    public int resources = 100;
+
+
+
+    public List<Settlement> settlements =
+            new ArrayList<>();
+
+
+
+
+
+    public void tick() {
+
+
+        worldAge++;
+
+
+    }
+
+
+
+
+
+    public void dailyUpdate() {
+
+
+
+        if(forestLevel < 100) {
+
+
+            forestLevel++;
+
+
+        }
+
+
+
+        if(forestLevel > 50) {
+
+
+            animalPopulation++;
+
+
+        }
+
+
+
+        if(resources < 100) {
+
+
+            resources++;
+
+
+        }
+
+
+
+
+        SettlementManager.dailyUpdate(this);
+
+
+
+        civilizationLevel =
+                settlements.size();
+
+
+
+    }
+
+
+}
+NewDayEvent.java:
+package com.example.core;
+
+
+
+public class NewDayEvent extends WorldEvent {
+
+
+
+    public NewDayEvent() {
+
+
+        super("New Day Event");
+
+
+    }
+
+
+
+
+    @Override
+    public void run() {
+
+
+
+        System.out.println(
+            "[LivingWorld] The world changed today!"
+        );
+
+
+
+    }
+
+
+}
+Profession.java:
+package com.example.core;
+
+public enum Profession {
+
+    FARMER,
+
+    LUMBERJACK,
+
+    MINER,
+
+    BUILDER,
+
+    BLACKSMITH,
+
+    UNEMPLOYED
+
+}
+ResourceShortageEvent.java:
+package com.example.core;
+
+
+
+public class ResourceShortageEvent extends WorldEvent {
+
+
+
+    public ResourceShortageEvent() {
+
+
+        super("Resource Shortage");
+
+
+    }
+
+
+
+
+
+    @Override
+    public void run() {
+
+
+
+        LivingWorldSave data =
+                LivingWorldManager.getData();
+
+
+
+        if (data == null) {
+
+            return;
+
+        }
+
+
+
+        data.resources -= 10;
+
+
+
+        if (data.resources < 0) {
+
+            data.resources = 0;
+
+        }
+
+
+
+        System.out.println(
+            "[LivingWorld] A resource shortage happened!"
+        );
+
+
+    }
+
+
+}
+Settlement.java:
+package com.example.core;
+
+import java.util.EnumMap;
+import java.util.Map;
+
+public class Settlement {
+
+    private final String name;
+
+    private int population;
+    private int level;
+
+    private final int x;
+    private final int z;
+
+    private int food;
+    private int wood;
+    private int stone;
+
+    private int houses;
+
+    private final Map<Profession, Integer> professions =
+            new EnumMap<>(Profession.class);
+
+    public Settlement(String name, int x, int z) {
+
+        this.name = name;
+
+        population = 5;
+        level = 1;
+
+        this.x = x;
+        this.z = z;
+
+        food = 50;
+        wood = 25;
+        stone = 10;
+
+        houses = 2;
+
+        for (Profession profession : Profession.values()) {
+            professions.put(profession, 0);
+        }
+
+        professions.put(Profession.FARMER, 2);
+        professions.put(Profession.LUMBERJACK, 1);
+        professions.put(Profession.MINER, 1);
+        professions.put(Profession.UNEMPLOYED, 1);
+    }
+
+    public void dailyUpdate(LivingWorldSave data) {
+
+        assignJobs();
+
+        gatherResources();
+
+        buildHouses();
+
+        consumeFood();
+
+        checkGrowth();
+    }
+
+    private void assignJobs() {
+
+        while (professions.get(Profession.UNEMPLOYED) > 0) {
+
+            Profession needed = getMostNeededProfession();
+
+            professions.put(
+                    Profession.UNEMPLOYED,
+                    professions.get(Profession.UNEMPLOYED) - 1
+            );
+
+            professions.put(
+                    needed,
+                    professions.get(needed) + 1
+            );
+
+            System.out.println(
+                    "[LivingWorld] " +
+                    name +
+                    " assigned a new " +
+                    needed
+            );
+        }
+    }
+
+    private Profession getMostNeededProfession() {
+
+        if (food < population * 3) {
+            return Profession.FARMER;
+        }
+
+        if (wood < 50) {
+            return Profession.LUMBERJACK;
+        }
+
+        if (stone < 30) {
+            return Profession.MINER;
+        }
+
+        if (level >= 2 &&
+                professions.get(Profession.BUILDER) < 2) {
+            return Profession.BUILDER;
+        }
+
+        if (level >= 3 &&
+                professions.get(Profession.BLACKSMITH) < 1) {
+            return Profession.BLACKSMITH;
+        }
+
+        return Profession.FARMER;
+    }
+
+    private void gatherResources() {
+
+        food += professions.get(Profession.FARMER) * 3;
+
+        wood += professions.get(Profession.LUMBERJACK) * 2;
+
+        stone += professions.get(Profession.MINER) * 2;
+    }
+
+    private void buildHouses() {
+
+        int builders = professions.get(Profession.BUILDER);
+
+        if (builders == 0) {
+            return;
+        }
+
+        if (wood >= 25 && stone >= 10) {
+
+            wood -= 25;
+            stone -= 10;
+
+            houses++;
+
+            System.out.println(
+                    "[LivingWorld] " +
+                    name +
+                    " built a new house!"
+            );
+        }
+    }
+
+    private void consumeFood() {
+
+        food -= population;
+
+        if (food < 0) {
+
+            food = 0;
+
+            population--;
+
+            if (population < 5) {
+                population = 5;
+            }
+
+            System.out.println(
+                    "[LivingWorld] " +
+                    name +
+                    " is starving!"
+            );
+        }
+    }
+
+    private void checkGrowth() {
+
+        if (population >= houses * 5) {
+            return;
+        }
+
+        if (food > population * 2) {
+
+            population++;
+
+            food -= 5;
+
+            professions.put(
+                    Profession.UNEMPLOYED,
+                    professions.get(Profession.UNEMPLOYED) + 1
+            );
+        }
+
+        level = Math.max(level, houses / 2 + 1);
+    }
+
+    public void reducePopulation(int amount) {
+
+        population -= amount;
+
+        if (population < 5) {
+            population = 5;
+        }
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public int getPopulation() {
+        return population;
+    }
+
+    public int getLevel() {
+        return level;
+    }
+
+    public int getFood() {
+        return food;
+    }
+
+    public int getWood() {
+        return wood;
+    }
+
+    public int getStone() {
+        return stone;
+    }
+
+    public int getHouses() {
+        return houses;
+    }
+
+    public int getProfessionCount(Profession profession) {
+        return professions.get(profession);
+    }
+
+    public void setProfessionCount(
+            Profession profession,
+            int amount
+    ) {
+        professions.put(profession, amount);
+    }
+
+    public int getX() {
+        return x;
+    }
+
+    public int getZ() {
+        return z;
+    }
+}
+SettlementManager.java:
+package com.example.core;
+
+import java.util.Random;
+
+public class SettlementManager {
+
+    private static final Random RANDOM = new Random();
+
+    public static void dailyUpdate(LivingWorldSave data) {
+
+        Settlement founder = null;
+
+        for (Settlement settlement : data.settlements) {
+
+            settlement.dailyUpdate(data);
+
+            if (founder == null && settlement.getPopulation() >= 30 && data.settlements.size() < 5) {
+
+                founder = settlement;
+
+            }
+
+        }
+
+        if (founder != null) {
+
+            int x = founder.getX() + RANDOM.nextInt(401) - 200;
+
+            int z = founder.getZ() + RANDOM.nextInt(401) - 200;
+
+            Settlement newVillage = new Settlement(
+
+                    "Village " + (data.settlements.size() + 1),
+
+                    x,
+
+                    z
+
+            );
+
+            founder.reducePopulation(10);
+
+            data.settlements.add(newVillage);
+
+            System.out.println("[LivingWorld]");
+
+            System.out.println("New settlement founded!");
+
+            System.out.println("Name: " + newVillage.getName());
+
+            System.out.println("Location: " + x + ", " + z);
+
+        }
+
+    }
+
+}
+WorldEvent.java:
+package com.example.core;
+
+
+public abstract class WorldEvent {
+
+
+    private final String name;
+
+
+    public WorldEvent(String name) {
+
+        this.name = name;
+
+    }
+
+
+    public String getName() {
+
+        return name;
+
+    }
+
+
+    public abstract void run();
+
+
+}
+WorldEventManager.java:
+package com.example.core;
+
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
+
+
+
+public class WorldEventManager {
+
+
+    private static final List<WorldEvent> EVENTS = new ArrayList<>();
+
+
+    private static final Random RANDOM = new Random();
+
+
+
+    public static void register(WorldEvent event) {
+
+
+        EVENTS.add(event);
+
+
+        System.out.println(
+            "[LivingWorld] Event registered: "
+            + event.getName()
+        );
+
+
+    }
+
+
+
+
+    public static void dailyTick() {
+
+
+
+        for(WorldEvent event : EVENTS) {
+
+
+
+            int chance = RANDOM.nextInt(100);
+
+
+
+            if(chance < 20) {
+
+
+                event.run();
+
+
+            }
+
+
+        }
+
+
+    }
+
+
+}
